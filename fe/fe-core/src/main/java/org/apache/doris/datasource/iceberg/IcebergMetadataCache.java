@@ -28,6 +28,7 @@ import org.apache.doris.datasource.ExternalMetaCacheMgr;
 import org.apache.doris.datasource.ExternalTable;
 import org.apache.doris.datasource.NameMapping;
 import org.apache.doris.datasource.hive.HMSExternalCatalog;
+import org.apache.doris.datasource.iceberg.cache.IcebergManifestCache;
 import org.apache.doris.mtmv.MTMVRelatedTableIf;
 
 import com.github.benmanes.caffeine.cache.LoadingCache;
@@ -35,6 +36,7 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.iceberg.ManifestFiles;
 import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.Table;
@@ -47,10 +49,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 
 public class IcebergMetadataCache {
     private static final Logger LOG = LogManager.getLogger(IcebergMetadataCache.class);
+
+    private final Map<Long, IcebergManifestCache> manifestCaches = new ConcurrentHashMap<>();
 
     private final LoadingCache<IcebergMetadataCacheKey, List<Snapshot>> snapshotListCache;
     private final LoadingCache<IcebergMetadataCacheKey, Table> tableCache;
@@ -96,6 +101,25 @@ public class IcebergMetadataCache {
     public IcebergSnapshotCacheValue getSnapshotCache(ExternalTable dorisTable) {
         IcebergMetadataCacheKey key = new IcebergMetadataCacheKey(dorisTable.getOrBuildNameMapping());
         return snapshotCache.get(key);
+    }
+
+    public IcebergManifestCache getManifestCache(IcebergExternalCatalog catalog) {
+        return manifestCaches.computeIfAbsent(catalog.getId(), id -> {
+            long capacityMb = Math.max(NumberUtils.toLong(
+                    catalog.getProperties().get(IcebergExternalCatalog.ICEBERG_MANIFEST_CACHE_CAPACITY_MB),
+                    IcebergExternalCatalog.DEFAULT_ICEBERG_MANIFEST_CACHE_CAPACITY_MB), 0L);
+            long ttlSec = NumberUtils.toLong(
+                    catalog.getProperties().get(IcebergExternalCatalog.ICEBERG_MANIFEST_CACHE_TTL_SECOND),
+                    IcebergExternalCatalog.DEFAULT_ICEBERG_MANIFEST_CACHE_TTL_SECOND);
+            return new IcebergManifestCache(capacityMb, ttlSec);
+        });
+    }
+
+    public void invalidateManifestCache(long catalogId) {
+        IcebergManifestCache manifestCache = manifestCaches.remove(catalogId);
+        if (manifestCache != null) {
+            manifestCache.invalidateAll();
+        }
     }
 
     @NotNull
@@ -180,6 +204,7 @@ public class IcebergMetadataCache {
         viewCache.asMap().entrySet().stream()
                 .filter(entry -> entry.getKey().nameMapping.getCtlId() == catalogId)
                 .forEach(entry -> viewCache.invalidate(entry.getKey()));
+        invalidateManifestCache(catalogId);
     }
 
     public void invalidateTableCache(ExternalTable dorisTable) {
