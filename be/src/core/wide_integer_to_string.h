@@ -23,6 +23,17 @@
 
 #include <string>
 
+// Include the full wide::integer definition instead of forward-declaring it.
+// The fmt::formatter<wide::integer> specialization and the extern-template
+// declarations below name fmt::formatter<Int128> (and the 256-bit variants),
+// and pch.h force-includes <fmt/ranges.h> into every translation unit. fmt's
+// is_range<> SFINAE then instantiates is_base_of / is_constructible on the
+// formatted type, which requires a complete type. With only a forward
+// declaration this fails to compile under libc++ with "implicit instantiation
+// of undefined template 'wide::integer<128, int>'" whenever this header is
+// processed before wide_integer.h.
+#include "core/wide_integer.h"
+
 namespace wide {
 template <size_t Bits, typename Signed>
 class integer;
