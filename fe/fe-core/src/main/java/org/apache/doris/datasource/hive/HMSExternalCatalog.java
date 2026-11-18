@@ -348,7 +348,7 @@ public class HMSExternalCatalog extends ExternalCatalog {
         initPreExecutionAuthenticator();
         HiveMetadataOps hiveOps = ExternalMetadataOperations.newHiveMetadataOps(hmsProperties.getHiveConf(), this);
         threadPoolWithPreAuth = ThreadPoolManager.newDaemonFixedThreadPoolWithPreAuth(
-                ICEBERG_CATALOG_EXECUTOR_THREAD_NUM,
+                getIcebergCatalogExecutorThreadNum(),
                 Integer.MAX_VALUE,
                 String.format("hms_iceberg_catalog_%s_executor_pool", name),
                 true,

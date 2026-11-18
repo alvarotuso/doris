@@ -184,7 +184,7 @@ public abstract class IcebergExternalCatalog extends ExternalCatalog {
         initCatalog();
         initPreExecutionAuthenticator();
         threadPoolWithPreAuth = ThreadPoolManager.newDaemonFixedThreadPoolWithPreAuth(
-                ICEBERG_CATALOG_EXECUTOR_THREAD_NUM,
+                getIcebergCatalogExecutorThreadNum(),
                 Integer.MAX_VALUE,
                 String.format("iceberg_catalog_%s_executor_pool", name),
                 true,

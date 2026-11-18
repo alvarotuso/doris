@@ -142,7 +142,10 @@ public abstract class ExternalCatalog
             CatalogProperty.ENABLE_MAPPING_VARBINARY,
             CatalogProperty.ENABLE_MAPPING_TIMESTAMP_TZ);
 
-    protected static final int ICEBERG_CATALOG_EXECUTOR_THREAD_NUM = Runtime.getRuntime().availableProcessors();
+    protected static int getIcebergCatalogExecutorThreadNum() {
+        int threadNum = Config.iceberg_catalog_executor_thread_num;
+        return threadNum > 0 ? threadNum : Runtime.getRuntime().availableProcessors();
+    }
 
     public static final String TEST_CONNECTION = "test_connection";
     public static final boolean DEFAULT_TEST_CONNECTION = false;

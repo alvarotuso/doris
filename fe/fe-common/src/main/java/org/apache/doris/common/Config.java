@@ -2470,6 +2470,14 @@ public class Config extends ConfigBase {
     @ConfField(mutable = false, masterOnly = false)
     public static int max_external_cache_loader_thread_pool_size = 64;
 
+    @ConfField(mutable = false, masterOnly = false, description = {
+            "每个 Iceberg Catalog（以及 HMS Catalog 中的 Iceberg 表）用于扫描规划的线程池大小。"
+                    + "小于等于 0 表示使用 FE 可用的处理器数量。",
+            "Thread pool size of the executor that each Iceberg catalog (and each HMS catalog, for its "
+                    + "Iceberg tables) uses for scan planning. A value <= 0 means the number of processors "
+                    + "available to the FE."})
+    public static int iceberg_catalog_executor_thread_num = -1;
+
     /**
      * Max cache num of external catalog's file
      * Decrease this value if FE's memory is small
