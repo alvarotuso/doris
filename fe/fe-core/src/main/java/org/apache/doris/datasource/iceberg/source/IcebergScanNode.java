@@ -47,6 +47,7 @@ import org.apache.doris.datasource.iceberg.cache.ManifestCacheValue;
 import org.apache.doris.datasource.property.storage.StorageProperties;
 import org.apache.doris.nereids.exceptions.NotSupportedException;
 import org.apache.doris.planner.PlanNodeId;
+import org.apache.doris.qe.ConnectContext;
 import org.apache.doris.qe.SessionVariable;
 import org.apache.doris.spi.Split;
 import org.apache.doris.statistics.StatisticalType;
@@ -75,6 +76,7 @@ import org.apache.iceberg.MetadataColumns;
 import org.apache.iceberg.PartitionData;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.PartitionSpecParser;
+import org.apache.iceberg.Schema;
 import org.apache.iceberg.SchemaParser;
 import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.Table;
@@ -290,7 +292,7 @@ public class IcebergScanNode extends FileQueryScanNode {
             try {
                 preExecutionAuthenticator.execute(
                         () -> {
-                            CloseableIterable<FileScanTask> fileScanTasks = planFileScanTask(scan);
+                            CloseableIterable<FileScanTask> fileScanTasks = splitFiles(scan);
                             taskRef.set(fileScanTasks);
 
                             CloseableIterator<FileScanTask> iterator = fileScanTasks.iterator();
@@ -304,7 +306,6 @@ public class IcebergScanNode extends FileQueryScanNode {
                         }
                 );
                 splitAssignment.finishSchedule();
-                recordManifestCacheProfile();
             } catch (Exception e) {
                 Optional<NotSupportedException> opt = checkNotSupportedException(e);
                 if (opt.isPresent()) {
@@ -380,13 +381,15 @@ public class IcebergScanNode extends FileQueryScanNode {
             return CloseableIterable.withNoopClose(Collections.emptyList());
         }
 
+        Schema scanSchema = scan.schema();
+
         // Initialize manifest cache for efficient manifest file access
         IcebergManifestCache cache = IcebergUtils.getManifestCache(source.getCatalog());
 
         // Convert query conjuncts to Iceberg filter expression
         // This combines all predicates with AND logic for partition/file pruning
         Expression filterExpr = conjuncts.stream()
-                .map(conjunct -> IcebergUtils.convertToIcebergExpr(conjunct, icebergTable.schema()))
+                .map(conjunct -> IcebergUtils.convertToIcebergExpr(conjunct, scanSchema))
                 .filter(Objects::nonNull)
                 .reduce(Expressions.alwaysTrue(), Expressions::and);
 
@@ -402,7 +405,7 @@ public class IcebergScanNode extends FileQueryScanNode {
 
         // Create metrics evaluator for file-level pruning based on column statistics
         InclusiveMetricsEvaluator metricsEvaluator =
-                new InclusiveMetricsEvaluator(icebergTable.schema(), filterExpr, caseSensitive);
+                new InclusiveMetricsEvaluator(scanSchema, filterExpr, caseSensitive);
 
         // ========== Phase 1: Load delete files from delete manifests ==========
         List<DeleteFile> deleteFiles = new ArrayList<>();
@@ -479,7 +482,7 @@ public class IcebergScanNode extends FileQueryScanNode {
                     tasks.add(new BaseFileScanTask(
                             dataFile,
                             deletes.toArray(new DeleteFile[0]),
-                            SchemaParser.toJson(icebergTable.schema()),
+                            SchemaParser.toJson(scanSchema),
                             PartitionSpecParser.toJson(spec),
                             residualEvaluator));
                 }
